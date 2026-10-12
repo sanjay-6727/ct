@@ -1,8 +1,368 @@
-VUE 3 + SPRING BOOT + MONGODB CRUD TEMPLATE
-============================================
+```vue
+<script setup>
+import { ref, onMounted, computed } from 'vue'
 
-PROJECT STRUCTURE
------------------
+const API = 'http://localhost:8080/api/library'
+
+// REACTIVE VARIABLES
+const books = ref([])
+const id = ref('')
+const title = ref('')
+const author = ref('')
+const copiesAvailable = ref(1)
+
+const loading = ref(false)
+const error = ref('')
+const message = ref('')
+const isEditing = ref(false)
+
+// GET ALL BOOKS
+async function getBooks() {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await fetch(`${API}/all`)
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch books')
+    }
+
+    books.value = await response.json()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
+
+// GET BOOK BY ID
+async function getBookById(bookId) {
+  error.value = ''
+
+  try {
+    const response = await fetch(`${API}/${bookId}`)
+
+    if (!response.ok) {
+      throw new Error('Book not found')
+    }
+
+    return await response.json()
+  } catch (e) {
+    error.value = e.message
+    return null
+  }
+}
+
+// ADD BOOK
+async function addBook() {
+  error.value = ''
+  message.value = ''
+
+  if (!title.value.trim() || !author.value.trim()) {
+    error.value = 'Enter title and author'
+    return
+  }
+
+  try {
+    const book = {
+      title: title.value.trim(),
+      author: author.value.trim(),
+      copiesAvailable: Number(copiesAvailable.value)
+    }
+
+    const response = await fetch(`${API}/add`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(book)
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to add book')
+    }
+
+    message.value = 'Book added successfully!'
+    resetForm()
+    await getBooks()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+// SELECT BOOK FOR EDITING
+function editBook(book) {
+  id.value = book.id
+  title.value = book.title
+  author.value = book.author
+  copiesAvailable.value = book.copiesAvailable
+  isEditing.value = true
+}
+
+// UPDATE BOOK
+async function updateBook() {
+  error.value = ''
+  message.value = ''
+
+  if (!title.value.trim() || !author.value.trim()) {
+    error.value = 'Enter title and author'
+    return
+  }
+
+  try {
+    const book = {
+      title: title.value.trim(),
+      author: author.value.trim(),
+      copiesAvailable: Number(copiesAvailable.value)
+    }
+
+    const response = await fetch(
+      `${API}/update/${id.value}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(book)
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to update book')
+    }
+
+    message.value = 'Book updated successfully!'
+    resetForm()
+    await getBooks()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+// DELETE BOOK
+async function deleteBook(bookId) {
+  if (!confirm('Are you sure you want to delete this book?')) {
+    return
+  }
+
+  error.value = ''
+  message.value = ''
+
+  try {
+    const response = await fetch(
+      `${API}/delete/${bookId}`,
+      {
+        method: 'DELETE'
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to delete book')
+    }
+
+    message.value = 'Book deleted successfully!'
+
+    if (id.value === bookId) {
+      resetForm()
+    }
+
+    await getBooks()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+// SUBMIT FORM: ADD OR UPDATE
+function submitForm() {
+  if (isEditing.value) {
+    updateBook()
+  } else {
+    addBook()
+  }
+}
+
+// RESET FORM
+function resetForm() {
+  id.value = ''
+  title.value = ''
+  author.value = ''
+  copiesAvailable.value = 1
+  isEditing.value = false
+}
+
+// SEARCH BOOKS
+const search = ref('')
+
+const filteredBooks = computed(() => {
+  const query = search.value.toLowerCase().trim()
+
+  return books.value.filter(book =>
+    book.title?.toLowerCase().includes(query) ||
+    book.author?.toLowerCase().includes(query)
+  )
+})
+
+// LIFECYCLE HOOK
+onMounted(() => {
+  getBooks()
+})
+</script>
+
+<template>
+  <main class="container">
+    <h1>Library Management System</h1>
+
+    <!-- STATUS MESSAGES -->
+    <p v-if="loading">Loading books...</p>
+    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="message" class="success">{{ message }}</p>
+
+    <!-- ADD / UPDATE FORM -->
+    <form @submit.prevent="submitForm">
+      <h2>{{ isEditing ? 'Update Book' : 'Add Book' }}</h2>
+
+      <input
+        v-model="title"
+        type="text"
+        placeholder="Book Title"
+        required
+      />
+
+      <input
+        v-model="author"
+        type="text"
+        placeholder="Author"
+        required
+      />
+
+      <input
+        v-model.number="copiesAvailable"
+        type="number"
+        min="0"
+        placeholder="Copies Available"
+        required
+      />
+
+      <button type="submit">
+        {{ isEditing ? 'Update Book' : 'Add Book' }}
+      </button>
+
+      <button
+        v-if="isEditing"
+        type="button"
+        @click="resetForm"
+      >
+        Cancel
+      </button>
+    </form>
+
+    <hr />
+
+    <!-- SEARCH -->
+    <h2>Book List</h2>
+
+    <input
+      v-model="search"
+      type="text"
+      placeholder="Search by title or author"
+    />
+
+    <button type="button" @click="getBooks">
+      Refresh
+    </button>
+
+    <!-- TABLE -->
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Title</th>
+          <th>Author</th>
+          <th>Copies</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr
+          v-for="book in filteredBooks"
+          :key="book.id"
+        >
+          <td>{{ book.id }}</td>
+          <td>{{ book.title }}</td>
+          <td>{{ book.author }}</td>
+          <td>{{ book.copiesAvailable }}</td>
+
+          <td>
+            <button
+              type="button"
+              @click="editBook(book)"
+            >
+              Edit
+            </button>
+
+            <button
+              type="button"
+              @click="deleteBook(book.id)"
+            >
+              Delete
+            </button>
+          </td>
+        </tr>
+
+        <tr v-if="!loading && filteredBooks.length === 0">
+          <td colspan="5">No books found</td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</template>
+
+<style scoped>
+.container {
+  max-width: 1000px;
+  margin: 30px auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
+
+input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+button {
+  padding: 8px 14px;
+  margin: 5px;
+  cursor: pointer;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 10px;
+  text-align: left;
+}
+
+.error {
+  color: red;
+}
+
+.success {
+  color: green;
+}
+</style>
+
 lib-frontend/
   index.html
   src/
